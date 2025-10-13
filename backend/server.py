@@ -34,6 +34,11 @@ db = client.ghost_hunting
 EMERGENT_LLM_KEY = os.getenv("EMERGENT_LLM_KEY", "sk-emergent-9Cc27A503E11d92298")
 openai_client = openai.OpenAI(api_key=EMERGENT_LLM_KEY)
 
+# Stripe configuration
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID", "")  # Your $19.99/month price ID
+stripe.api_key = STRIPE_SECRET_KEY
+
 # Models
 class Session(BaseModel):
     name: str
