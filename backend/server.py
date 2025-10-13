@@ -31,7 +31,7 @@ db = client.ghost_hunting
 
 # OpenAI with Emergent LLM Key
 EMERGENT_LLM_KEY = os.getenv("EMERGENT_LLM_KEY", "sk-emergent-9Cc27A503E11d92298")
-openai.api_key = EMERGENT_LLM_KEY
+openai_client = openai.OpenAI(api_key=EMERGENT_LLM_KEY)
 
 # Models
 class Session(BaseModel):
