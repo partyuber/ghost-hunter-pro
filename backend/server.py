@@ -259,6 +259,48 @@ async def get_subscription_status(user_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/subscription/verify-session")
+async def verify_session(session_id: str, user_id: str):
+    """Verify Stripe checkout session and activate subscription"""
+    try:
+        if not STRIPE_SECRET_KEY:
+            return {"success": False, "message": "Stripe not configured"}
+        
+        # Retrieve the session from Stripe
+        session = stripe.checkout.Session.retrieve(session_id)
+        
+        if session.payment_status == "paid":
+            # Activate subscription in database
+            await db.subscriptions.update_one(
+                {"user_id": user_id},
+                {
+                    "$set": {
+                        "user_id": user_id,
+                        "stripe_subscription_id": session.subscription,
+                        "stripe_customer_id": session.customer,
+                        "stripe_session_id": session_id,
+                        "status": "active",
+                        "created_at": datetime.utcnow().isoformat(),
+                        "updated_at": datetime.utcnow().isoformat()
+                    }
+                },
+                upsert=True
+            )
+            
+            return {
+                "success": True,
+                "is_subscribed": True,
+                "message": "Subscription activated"
+            }
+        else:
+            return {
+                "success": False,
+                "is_subscribed": False,
+                "message": "Payment not completed"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Verification failed: {str(e)}")
+
 @app.post("/api/subscription/create-checkout")
 async def create_checkout_session(request: CheckoutRequest):
     """Create Stripe checkout session for subscription"""
