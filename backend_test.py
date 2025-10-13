@@ -20,26 +20,27 @@ class GhostHuntingAPITester:
         self.recording_ids = []
         
     def test_health_check(self):
-        """Test GET / - Health check"""
-        print("🔍 Testing health check endpoint...")
+        """Test GET / - Health check (via API endpoint verification)"""
+        print("🔍 Testing backend health via API endpoints...")
         try:
-            response = requests.get(f"{self.base_url.replace('/api', '')}/")
+            # Since root / serves frontend, test backend health via sessions endpoint
+            response = requests.get(f"{self.base_url}/sessions")
             print(f"Status Code: {response.status_code}")
             print(f"Response: {response.json()}")
             
             if response.status_code == 200:
                 data = response.json()
-                if "message" in data and "status" in data:
-                    print("✅ Health check passed")
+                if "success" in data and "sessions" in data:
+                    print("✅ Backend health check passed (API is responsive)")
                     return True
                 else:
-                    print("❌ Health check failed - missing expected fields")
+                    print("❌ Backend health check failed - invalid response format")
                     return False
             else:
-                print(f"❌ Health check failed - status code {response.status_code}")
+                print(f"❌ Backend health check failed - status code {response.status_code}")
                 return False
         except Exception as e:
-            print(f"❌ Health check failed - {str(e)}")
+            print(f"❌ Backend health check failed - {str(e)}")
             return False
     
     def test_create_session(self, session_data):
