@@ -10,6 +10,7 @@ import base64
 import openai
 from bson import ObjectId
 import io
+import stripe
 
 load_dotenv()
 
