@@ -1,12 +1,40 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, ActivityIndicator } from 'react-native';
-import { Link, useRouter } from 'expo-router';
+import { Link, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscription } from '../contexts/SubscriptionContext';
+import Constants from 'expo-constants';
+
+const BACKEND_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
 export default function HomeScreen() {
-  const { isSubscribed, isLoading } = useSubscription();
+  const { isSubscribed, isLoading, checkSubscription } = useSubscription();
   const router = useRouter();
+  const params = useLocalSearchParams();
+
+  useEffect(() => {
+    // Check if returning from successful Stripe checkout
+    const verifyStripeSession = async () => {
+      if (params.subscription === 'success' && params.session_id && params.user_id) {
+        try {
+          const response = await fetch(`${BACKEND_URL}/api/subscription/verify-session?session_id=${params.session_id}&user_id=${params.user_id}`, {
+            method: 'POST',
+          });
+          const data = await response.json();
+          
+          if (data.success && data.is_subscribed) {
+            await checkSubscription();
+            // Clear URL params
+            router.replace('/');
+          }
+        } catch (error) {
+          console.error('Error verifying session:', error);
+        }
+      }
+    };
+
+    verifyStripeSession();
+  }, [params]);
 
   useEffect(() => {
     if (!isLoading && !isSubscribed) {
