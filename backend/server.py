@@ -130,7 +130,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
         audio_file.name = file.filename or "audio.m4a"
         
         # Call OpenAI Whisper
-        response = openai.Audio.transcribe(
+        response = openai_client.audio.transcriptions.create(
             model="whisper-1",
             file=audio_file,
             response_format="text"
