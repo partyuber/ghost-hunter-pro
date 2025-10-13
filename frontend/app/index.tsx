@@ -1,9 +1,32 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
-import { Link } from 'expo-router';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, ActivityIndicator } from 'react-native';
+import { Link, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSubscription } from '../contexts/SubscriptionContext';
 
 export default function HomeScreen() {
+  const { isSubscribed, isLoading } = useSubscription();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && !isSubscribed) {
+      router.replace('/paywall');
+    }
+  }, [isSubscribed, isLoading]);
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color="#00ff88" />
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
+  }
+
+  if (!isSubscribed) {
+    return null;
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -73,6 +96,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0a0a0a',
   },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#888',
+    marginTop: 16,
+    fontSize: 14,
+  },
   scrollContent: {
     padding: 20,
   },
@@ -86,9 +118,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#00ff88',
     marginTop: 16,
-    textShadowColor: '#00ff88',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
   },
   subtitle: {
     fontSize: 14,
@@ -105,11 +134,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#00ff8833',
-    shadowColor: '#00ff88',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 5,
   },
   toolTitle: {
     fontSize: 18,
