@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscription } from '../contexts/SubscriptionContext';
+import { Link } from 'expo-router';
 
 export default function PaywallScreen() {
   const { createCheckoutSession, isLoading } = useSubscription();
