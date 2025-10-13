@@ -280,7 +280,7 @@ async def create_checkout_session(request: CheckoutRequest):
                 "price": STRIPE_PRICE_ID,
                 "quantity": 1,
             }],
-            success_url=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/?subscription=success",
+            success_url=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/?subscription=success&session_id={{CHECKOUT_SESSION_ID}}&user_id={request.user_id}",
             cancel_url=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/paywall?canceled=true",
         )
         
