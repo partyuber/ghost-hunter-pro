@@ -316,8 +316,19 @@ class GhostHuntingAPITester:
                 print()
                 
                 # 9. Verify deletion by trying to get the deleted session
-                deleted_session = self.test_get_session(session_2_id)
-                results["verify_deletion"] = deleted_session is None
+                print("🔍 Verifying session deletion...")
+                try:
+                    response = requests.get(f"{self.base_url}/sessions/{session_2_id}")
+                    if response.status_code == 400 or response.status_code == 404:
+                        print("✅ Session deletion verified - session not found as expected")
+                        results["verify_deletion"] = True
+                    else:
+                        print(f"❌ Session deletion verification failed - unexpected status code {response.status_code}")
+                        results["verify_deletion"] = False
+                except Exception as e:
+                    print(f"❌ Session deletion verification failed - {str(e)}")
+                    results["verify_deletion"] = False
+                print()
                 print()
                 
                 # 10. List sessions again (should have 1)
