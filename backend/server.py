@@ -413,6 +413,35 @@ async def cancel_subscription(request: CancelRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/subscription/dev-activate")
+async def dev_activate_subscription(request: CheckoutRequest):
+    """Development mode: Activate subscription without payment (TESTING ONLY)"""
+    try:
+        # Activate subscription in database
+        await db.subscriptions.update_one(
+            {"user_id": request.user_id},
+            {
+                "$set": {
+                    "user_id": request.user_id,
+                    "stripe_subscription_id": "dev_sub_" + request.user_id,
+                    "stripe_customer_id": "dev_cus_" + request.user_id,
+                    "status": "active",
+                    "is_dev_mode": True,
+                    "created_at": datetime.utcnow().isoformat(),
+                    "updated_at": datetime.utcnow().isoformat()
+                }
+            },
+            upsert=True
+        )
+        
+        return {
+            "success": True,
+            "is_subscribed": True,
+            "message": "Development subscription activated"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)
