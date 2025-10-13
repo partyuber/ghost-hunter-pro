@@ -152,7 +152,7 @@ async def analyze_evp(recording_id: str, audio_base64: str):
         audio_file = io.BytesIO(audio_bytes)
         audio_file.name = "evp_audio.m4a"
         
-        transcription = openai.Audio.transcribe(
+        transcription = openai_client.audio.transcriptions.create(
             model="whisper-1",
             file=audio_file,
             response_format="text"
@@ -173,7 +173,7 @@ Look for:
 Provide a detailed analysis with confidence level (0-100%).
 """
         
-        gpt_response = openai.ChatCompletion.create(
+        gpt_response = openai_client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a paranormal investigator AI assistant analyzing EVP recordings."},
