@@ -1,136 +1,156 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import Purchases, { PurchasesOffering } from 'react-native-purchases';
-import { Platform, Alert } from 'react-native';
+import { Alert } from 'react-native';
+import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const BACKEND_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
 interface SubscriptionContextType {
   isSubscribed: boolean;
   isLoading: boolean;
-  offerings: PurchasesOffering | null;
-  purchasePackage: (packageToPurchase: any) => Promise<void>;
-  restorePurchases: () => Promise<void>;
+  userId: string | null;
+  subscriptionStatus: string | null;
+  createCheckoutSession: () => Promise<void>;
   checkSubscription: () => Promise<void>;
+  cancelSubscription: () => Promise<void>;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType>({
   isSubscribed: false,
   isLoading: true,
-  offerings: null,
-  purchasePackage: async () => {},
-  restorePurchases: async () => {},
+  userId: null,
+  subscriptionStatus: null,
+  createCheckoutSession: async () => {},
   checkSubscription: async () => {},
+  cancelSubscription: async () => {},
 });
 
 export const useSubscription = () => useContext(SubscriptionContext);
 
-// RevenueCat API Keys - Replace with your actual keys
-const REVENUECAT_API_KEY = Platform.select({
-  ios: 'YOUR_IOS_API_KEY',
-  android: 'YOUR_ANDROID_API_KEY',
-}) || 'MOCK_API_KEY';
-
 export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [offerings, setOfferings] = useState<PurchasesOffering | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    initializePurchases();
+    initializeUser();
   }, []);
 
-  const initializePurchases = async () => {
+  const initializeUser = async () => {
     try {
-      // For development/testing, we'll use a mock subscription system
-      // In production, uncomment the RevenueCat initialization:
-      // Purchases.configure({ apiKey: REVENUECAT_API_KEY });
+      // Get or create user ID
+      let storedUserId = await AsyncStorage.getItem('user_id');
+      if (!storedUserId) {
+        storedUserId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        await AsyncStorage.setItem('user_id', storedUserId);
+      }
+      setUserId(storedUserId);
       
-      // Mock mode for development
-      console.log('[Subscription] Initializing in mock mode');
+      // Check subscription status
       await checkSubscription();
-      // await loadOfferings();
     } catch (error) {
       console.error('[Subscription] Initialization error:', error);
       setIsLoading(false);
     }
   };
 
-  const loadOfferings = async () => {
-    try {
-      const offerings = await Purchases.getOfferings();
-      if (offerings.current !== null) {
-        setOfferings(offerings.current);
-      }
-    } catch (error) {
-      console.error('[Subscription] Error loading offerings:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const checkSubscription = async () => {
     try {
-      // For production, use RevenueCat:
-      // const customerInfo = await Purchases.getCustomerInfo();
-      // const isActive = customerInfo.entitlements.active['premium'] !== undefined;
-      // setIsSubscribed(isActive);
+      const storedUserId = await AsyncStorage.getItem('user_id');
+      if (!storedUserId) return;
+
+      const response = await fetch(`${BACKEND_URL}/api/subscription/status?user_id=${storedUserId}`);
+      const data = await response.json();
       
-      // Mock mode - check local storage
-      const mockSubscription = localStorage.getItem('mock_subscription');
-      setIsSubscribed(mockSubscription === 'true');
+      if (data.success) {
+        setIsSubscribed(data.is_subscribed);
+        setSubscriptionStatus(data.status);
+      }
     } catch (error) {
-      console.error('[Subscription] Error checking subscription:', error);
-      setIsSubscribed(false);
+      console.error('[Subscription] Error checking status:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const purchasePackage = async (packageToPurchase: any) => {
+  const createCheckoutSession = async () => {
     try {
-      // For production, use RevenueCat:
-      // const { customerInfo } = await Purchases.purchasePackage(packageToPurchase);
-      // const isActive = customerInfo.entitlements.active['premium'] !== undefined;
-      // setIsSubscribed(isActive);
-      
-      // Mock mode - simulate purchase
-      Alert.alert(
-        'Mock Subscription',
-        'In production, this will process a real payment through the app store. For now, activating mock subscription.',
-        [
-          {
-            text: 'Activate Mock Subscription',
-            onPress: () => {
-              localStorage.setItem('mock_subscription', 'true');
-              setIsSubscribed(true);
-              Alert.alert('Success!', 'Your subscription is now active!');
-            },
-          },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
-    } catch (error: any) {
-      if (!error.userCancelled) {
-        Alert.alert('Error', 'Failed to process purchase');
+      const storedUserId = await AsyncStorage.getItem('user_id');
+      if (!storedUserId) {
+        Alert.alert('Error', 'User ID not found');
+        return;
       }
+
+      setIsLoading(true);
+      const response = await fetch(`${BACKEND_URL}/api/subscription/create-checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: storedUserId,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success && data.checkout_url) {
+        // Open Stripe checkout in browser
+        const { Linking } = await import('react-native');
+        await Linking.openURL(data.checkout_url);
+        
+        Alert.alert(
+          'Checkout Started',
+          'Complete your payment in the browser. Return here after payment.',
+          [
+            {
+              text: 'I Completed Payment',
+              onPress: () => checkSubscription(),
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Error', data.message || 'Failed to create checkout session');
+      }
+    } catch (error) {
+      console.error('[Subscription] Checkout error:', error);
+      Alert.alert('Error', 'Failed to start checkout process');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const restorePurchases = async () => {
+  const cancelSubscription = async () => {
     try {
-      // For production, use RevenueCat:
-      // const customerInfo = await Purchases.restorePurchases();
-      // const isActive = customerInfo.entitlements.active['premium'] !== undefined;
-      // setIsSubscribed(isActive);
+      const storedUserId = await AsyncStorage.getItem('user_id');
+      if (!storedUserId) return;
+
+      const response = await fetch(`${BACKEND_URL}/api/subscription/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: storedUserId,
+        }),
+      });
+
+      const data = await response.json();
       
-      // Mock mode
-      const mockSubscription = localStorage.getItem('mock_subscription');
-      if (mockSubscription === 'true') {
-        setIsSubscribed(true);
-        Alert.alert('Success', 'Subscription restored!');
+      if (data.success) {
+        await checkSubscription();
+        Alert.alert('Success', 'Subscription cancelled');
       } else {
-        Alert.alert('No Subscription', 'No active subscription found');
+        Alert.alert('Error', data.message || 'Failed to cancel subscription');
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to restore purchases');
+      console.error('[Subscription] Cancel error:', error);
+      Alert.alert('Error', 'Failed to cancel subscription');
     }
   };
 
@@ -139,10 +159,11 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       value={{
         isSubscribed,
         isLoading,
-        offerings,
-        purchasePackage,
-        restorePurchases,
+        userId,
+        subscriptionStatus,
+        createCheckoutSession,
         checkSubscription,
+        cancelSubscription,
       }}
     >
       {children}

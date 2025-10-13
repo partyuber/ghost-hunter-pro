@@ -2,24 +2,18 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSubscription } from '../contexts/SubscriptionContext';
-import { useRouter } from 'expo-router';
 
 export default function PaywallScreen() {
-  const { purchasePackage, restorePurchases, isLoading } = useSubscription();
-  const router = useRouter();
+  const { createCheckoutSession, isLoading } = useSubscription();
 
   const features = [
     { icon: 'radio-outline', title: 'Spirit Box', description: 'Radio frequency scanning for spirit communication' },
     { icon: 'mic-outline', title: 'AI Voice Recorder', description: 'Record and transcribe with OpenAI Whisper' },
     { icon: 'analytics-outline', title: 'EVP Analyzer', description: 'AI-powered paranormal voice analysis' },
     { icon: 'camera-outline', title: 'IR/Thermal Camera', description: 'Night vision and thermal imaging modes' },
+    { icon: 'pulse-outline', title: 'EMF Detector', description: 'Electromagnetic field detection' },
     { icon: 'folder-outline', title: 'Investigation Sessions', description: 'Track and manage ghost hunting sessions' },
-    { icon: 'cloud-outline', title: 'Cloud Backup', description: 'Never lose your paranormal evidence' },
   ];
-
-  const handleSubscribe = () => {
-    purchasePackage(null);
-  };
 
   return (
     <View style={styles.container}>
@@ -33,11 +27,11 @@ export default function PaywallScreen() {
         <View style={styles.priceCard}>
           <Text style={styles.priceAmount}>$19.99</Text>
           <Text style={styles.pricePeriod}>per month</Text>
-          <Text style={styles.priceNote}>Cancel anytime</Text>
+          <Text style={styles.priceNote}>Billed monthly • Cancel anytime</Text>
         </View>
 
         <View style={styles.featuresContainer}>
-          <Text style={styles.featuresTitle}>Unlock All Features</Text>
+          <Text style={styles.featuresTitle}>Full Access To All Tools</Text>
           {features.map((feature, index) => (
             <View key={index} style={styles.featureItem}>
               <View style={styles.featureIcon}>
@@ -54,27 +48,26 @@ export default function PaywallScreen() {
 
         <TouchableOpacity
           style={styles.subscribeButton}
-          onPress={handleSubscribe}
+          onPress={createCheckoutSession}
           disabled={isLoading}
         >
           <Text style={styles.subscribeButtonText}>
-            {isLoading ? 'Loading...' : 'Subscribe Now'}
+            {isLoading ? 'Loading...' : 'Subscribe Now with Stripe'}
           </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.restoreButton} onPress={restorePurchases}>
-          <Text style={styles.restoreButtonText}>Restore Purchases</Text>
         </TouchableOpacity>
 
         <View style={styles.disclaimerContainer}>
           <Text style={styles.disclaimer}>
-            • Payment charged to your App Store or Google Play account
+            • Secure payment powered by Stripe
           </Text>
           <Text style={styles.disclaimer}>
             • Subscription automatically renews unless cancelled
           </Text>
           <Text style={styles.disclaimer}>
-            • Manage subscriptions in account settings
+            • Cancel anytime from your account settings
+          </Text>
+          <Text style={styles.disclaimer}>
+            • No refunds for partial months
           </Text>
         </View>
       </ScrollView>
@@ -138,6 +131,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
     marginBottom: 16,
+    textAlign: 'center',
   },
   featureItem: {
     flexDirection: 'row',
@@ -174,21 +168,12 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     padding: 18,
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 24,
   },
   subscribeButtonText: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#000',
-  },
-  restoreButton: {
-    padding: 16,
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  restoreButtonText: {
-    fontSize: 14,
-    color: '#00ff88',
   },
   disclaimerContainer: {
     paddingTop: 16,
