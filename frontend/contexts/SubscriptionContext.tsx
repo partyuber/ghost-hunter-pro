@@ -100,17 +100,14 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         const { Linking } = await import('react-native');
         await Linking.openURL(data.checkout_url);
         
+        // Start polling for subscription status
         Alert.alert(
-          'Checkout Started',
-          'Complete your payment in the browser. Return here after payment.',
+          'Payment Window Opened',
+          'Complete your payment in the browser. We\'ll automatically detect when you\'re done!',
           [
             {
-              text: 'I Completed Payment',
-              onPress: () => checkSubscription(),
-            },
-            {
-              text: 'Cancel',
-              style: 'cancel',
+              text: 'OK',
+              onPress: () => startPollingSubscription(),
             },
           ]
         );
@@ -123,6 +120,25 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const startPollingSubscription = () => {
+    // Poll every 3 seconds for up to 5 minutes
+    let pollCount = 0;
+    const maxPolls = 100; // 5 minutes
+    
+    const pollInterval = setInterval(async () => {
+      pollCount++;
+      
+      await checkSubscription();
+      
+      if (isSubscribed || pollCount >= maxPolls) {
+        clearInterval(pollInterval);
+        if (isSubscribed) {
+          Alert.alert('Success!', 'Your subscription is now active! 🎉');
+        }
+      }
+    }, 3000);
   };
 
   const cancelSubscription = async () => {
