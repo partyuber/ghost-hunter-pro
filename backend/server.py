@@ -226,6 +226,151 @@ async def get_evp_analysis(recording_id: str):
         raise HTTPException(status_code=404, detail="Analysis not found")
     return {"success": True, "analysis": serialize_doc(analysis)}
 
+# Stripe Subscription Endpoints
+class CheckoutRequest(BaseModel):
+    user_id: str
+
+class CancelRequest(BaseModel):
+    user_id: str
+
+@app.get("/api/subscription/status")
+async def get_subscription_status(user_id: str):
+    """Check if user has active subscription"""
+    try:
+        # Find user's subscription in database
+        subscription = await db.subscriptions.find_one({"user_id": user_id})
+        
+        if not subscription:
+            return {
+                "success": True,
+                "is_subscribed": False,
+                "status": "inactive"
+            }
+        
+        # Check if subscription is active
+        is_active = subscription.get("status") == "active"
+        
+        return {
+            "success": True,
+            "is_subscribed": is_active,
+            "status": subscription.get("status", "inactive"),
+            "subscription_id": subscription.get("stripe_subscription_id")
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/subscription/create-checkout")
+async def create_checkout_session(request: CheckoutRequest):
+    """Create Stripe checkout session for subscription"""
+    try:
+        if not STRIPE_SECRET_KEY or not STRIPE_PRICE_ID:
+            # For development without Stripe keys
+            return {
+                "success": False,
+                "message": "Stripe not configured. Please add STRIPE_SECRET_KEY and STRIPE_PRICE_ID to .env file"
+            }
+        
+        # Create Stripe checkout session
+        checkout_session = stripe.checkout.Session.create(
+            customer_email=f"{request.user_id}@ghosthunter.app",
+            client_reference_id=request.user_id,
+            mode="subscription",
+            payment_method_types=["card"],
+            line_items=[{
+                "price": STRIPE_PRICE_ID,
+                "quantity": 1,
+            }],
+            success_url=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/?subscription=success",
+            cancel_url=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/paywall?canceled=true",
+        )
+        
+        return {
+            "success": True,
+            "checkout_url": checkout_session.url,
+            "session_id": checkout_session.id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Checkout creation failed: {str(e)}")
+
+@app.post("/api/subscription/webhook")
+async def stripe_webhook(request: dict):
+    """Handle Stripe webhooks for subscription events"""
+    try:
+        event_type = request.get("type")
+        data = request.get("data", {}).get("object", {})
+        
+        if event_type == "checkout.session.completed":
+            # User completed payment
+            user_id = data.get("client_reference_id")
+            subscription_id = data.get("subscription")
+            
+            # Create or update subscription in database
+            await db.subscriptions.update_one(
+                {"user_id": user_id},
+                {
+                    "$set": {
+                        "user_id": user_id,
+                        "stripe_subscription_id": subscription_id,
+                        "stripe_customer_id": data.get("customer"),
+                        "status": "active",
+                        "created_at": datetime.utcnow().isoformat(),
+                        "updated_at": datetime.utcnow().isoformat()
+                    }
+                },
+                upsert=True
+            )
+            
+        elif event_type == "customer.subscription.deleted":
+            # Subscription cancelled
+            subscription_id = data.get("id")
+            
+            await db.subscriptions.update_one(
+                {"stripe_subscription_id": subscription_id},
+                {
+                    "$set": {
+                        "status": "cancelled",
+                        "updated_at": datetime.utcnow().isoformat()
+                    }
+                }
+            )
+        
+        return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/subscription/cancel")
+async def cancel_subscription(request: CancelRequest):
+    """Cancel user's subscription"""
+    try:
+        # Find user's subscription
+        subscription = await db.subscriptions.find_one({"user_id": request.user_id})
+        
+        if not subscription:
+            return {"success": False, "message": "No active subscription found"}
+        
+        if not STRIPE_SECRET_KEY:
+            return {"success": False, "message": "Stripe not configured"}
+        
+        # Cancel in Stripe
+        stripe_subscription_id = subscription.get("stripe_subscription_id")
+        if stripe_subscription_id:
+            stripe.Subscription.delete(stripe_subscription_id)
+        
+        # Update in database
+        await db.subscriptions.update_one(
+            {"user_id": request.user_id},
+            {
+                "$set": {
+                    "status": "cancelled",
+                    "updated_at": datetime.utcnow().isoformat()
+                }
+            }
+        )
+        
+        return {"success": True, "message": "Subscription cancelled"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)
