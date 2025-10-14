@@ -34,10 +34,29 @@ db = client.ghost_hunting
 EMERGENT_LLM_KEY = os.getenv("EMERGENT_LLM_KEY", "sk-emergent-9Cc27A503E11d92298")
 openai_client = openai.OpenAI(api_key=EMERGENT_LLM_KEY)
 
-# Stripe configuration
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
-STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID", "")  # Your $19.99/month price ID
-stripe.api_key = STRIPE_SECRET_KEY
+# PayPal configuration
+PAYPAL_CLIENT_ID = os.getenv("PAYPAL_CLIENT_ID", "")
+PAYPAL_SECRET = os.getenv("PAYPAL_SECRET", "")
+PAYPAL_PLAN_ID = os.getenv("PAYPAL_PLAN_ID", "")
+PAYPAL_MODE = os.getenv("PAYPAL_MODE", "sandbox")  # sandbox or live
+PAYPAL_BASE_URL = f"https://api-m.{PAYPAL_MODE}.paypal.com" if PAYPAL_MODE == "sandbox" else "https://api-m.paypal.com"
+
+def get_paypal_access_token():
+    """Get PayPal access token"""
+    url = f"{PAYPAL_BASE_URL}/v1/oauth2/token"
+    headers = {
+        "Accept": "application/json",
+        "Accept-Language": "en_US",
+    }
+    data = {
+        "grant_type": "client_credentials"
+    }
+    
+    response = requests.post(url, headers=headers, data=data, auth=(PAYPAL_CLIENT_ID, PAYPAL_SECRET))
+    
+    if response.status_code == 200:
+        return response.json()["access_token"]
+    return None
 
 # Models
 class Session(BaseModel):
