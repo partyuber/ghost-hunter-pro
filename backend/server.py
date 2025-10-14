@@ -509,118 +509,6 @@ async def cancel_paypal_subscription(request: CancelRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/subscription/create-checkout")
-async def create_checkout_session(request: CheckoutRequest):
-    """Create Stripe checkout session for subscription"""
-    try:
-        if not STRIPE_SECRET_KEY or not STRIPE_PRICE_ID:
-            # For development without Stripe keys
-            return {
-                "success": False,
-                "message": "Stripe not configured. Please add STRIPE_SECRET_KEY and STRIPE_PRICE_ID to .env file"
-            }
-        
-        # Create Stripe checkout session
-        checkout_session = stripe.checkout.Session.create(
-            customer_email=f"{request.user_id}@ghosthunter.app",
-            client_reference_id=request.user_id,
-            mode="subscription",
-            payment_method_types=["card"],
-            line_items=[{
-                "price": STRIPE_PRICE_ID,
-                "quantity": 1,
-            }],
-            success_url=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/?subscription=success&session_id={{CHECKOUT_SESSION_ID}}&user_id={request.user_id}",
-            cancel_url=f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/paywall?canceled=true",
-        )
-        
-        return {
-            "success": True,
-            "checkout_url": checkout_session.url,
-            "session_id": checkout_session.id
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Checkout creation failed: {str(e)}")
-
-@app.post("/api/subscription/webhook")
-async def stripe_webhook(request: dict):
-    """Handle Stripe webhooks for subscription events"""
-    try:
-        event_type = request.get("type")
-        data = request.get("data", {}).get("object", {})
-        
-        if event_type == "checkout.session.completed":
-            # User completed payment
-            user_id = data.get("client_reference_id")
-            subscription_id = data.get("subscription")
-            
-            # Create or update subscription in database
-            await db.subscriptions.update_one(
-                {"user_id": user_id},
-                {
-                    "$set": {
-                        "user_id": user_id,
-                        "stripe_subscription_id": subscription_id,
-                        "stripe_customer_id": data.get("customer"),
-                        "status": "active",
-                        "created_at": datetime.utcnow().isoformat(),
-                        "updated_at": datetime.utcnow().isoformat()
-                    }
-                },
-                upsert=True
-            )
-            
-        elif event_type == "customer.subscription.deleted":
-            # Subscription cancelled
-            subscription_id = data.get("id")
-            
-            await db.subscriptions.update_one(
-                {"stripe_subscription_id": subscription_id},
-                {
-                    "$set": {
-                        "status": "cancelled",
-                        "updated_at": datetime.utcnow().isoformat()
-                    }
-                }
-            )
-        
-        return {"success": True}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/subscription/cancel")
-async def cancel_subscription(request: CancelRequest):
-    """Cancel user's subscription"""
-    try:
-        # Find user's subscription
-        subscription = await db.subscriptions.find_one({"user_id": request.user_id})
-        
-        if not subscription:
-            return {"success": False, "message": "No active subscription found"}
-        
-        if not STRIPE_SECRET_KEY:
-            return {"success": False, "message": "Stripe not configured"}
-        
-        # Cancel in Stripe
-        stripe_subscription_id = subscription.get("stripe_subscription_id")
-        if stripe_subscription_id:
-            stripe.Subscription.delete(stripe_subscription_id)
-        
-        # Update in database
-        await db.subscriptions.update_one(
-            {"user_id": request.user_id},
-            {
-                "$set": {
-                    "status": "cancelled",
-                    "updated_at": datetime.utcnow().isoformat()
-                }
-            }
-        )
-        
-        return {"success": True, "message": "Subscription cancelled"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/api/subscription/dev-activate")
 async def dev_activate_subscription(request: CheckoutRequest):
     """Development mode: Activate subscription without payment (TESTING ONLY)"""
@@ -631,8 +519,7 @@ async def dev_activate_subscription(request: CheckoutRequest):
             {
                 "$set": {
                     "user_id": request.user_id,
-                    "stripe_subscription_id": "dev_sub_" + request.user_id,
-                    "stripe_customer_id": "dev_cus_" + request.user_id,
+                    "paypal_subscription_id": "dev_sub_" + request.user_id,
                     "status": "active",
                     "is_dev_mode": True,
                     "created_at": datetime.utcnow().isoformat(),
