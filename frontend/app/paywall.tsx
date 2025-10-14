@@ -52,7 +52,7 @@ export default function PaywallScreen() {
           disabled={isLoading}
         >
           <Text style={styles.subscribeButtonText}>
-            {isLoading ? 'Loading...' : 'Subscribe Now with Stripe'}
+            {isLoading ? 'Loading...' : 'Subscribe Now with PayPal'}
           </Text>
         </TouchableOpacity>
 
