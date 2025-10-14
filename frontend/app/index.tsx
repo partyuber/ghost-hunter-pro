@@ -13,27 +13,36 @@ export default function HomeScreen() {
   const params = useLocalSearchParams();
 
   useEffect(() => {
-    // Check if returning from successful Stripe checkout
-    const verifyStripeSession = async () => {
-      if (params.subscription === 'success' && params.session_id && params.user_id) {
+    // Check if returning from successful PayPal subscription
+    const verifyPayPalSubscription = async () => {
+      if (params.subscription === 'success' && params.user_id) {
         try {
-          const response = await fetch(`${BACKEND_URL}/api/subscription/verify-session?session_id=${params.session_id}&user_id=${params.user_id}`, {
-            method: 'POST',
-          });
-          const data = await response.json();
+          // Extract subscription_id from URL if present
+          const subscriptionId = params.subscription_id || params.ba_token;
           
-          if (data.success && data.is_subscribed) {
-            await checkSubscription();
-            // Clear URL params
-            router.replace('/');
+          if (subscriptionId) {
+            const response = await fetch(`${BACKEND_URL}/api/subscription/verify?subscription_id=${subscriptionId}&user_id=${params.user_id}`, {
+              method: 'POST',
+            });
+            const data = await response.json();
+            
+            if (data.success && data.is_subscribed) {
+              await checkSubscription();
+            }
           }
+          
+          // Always check subscription status when returning
+          await checkSubscription();
+          
+          // Clear URL params
+          router.replace('/');
         } catch (error) {
-          console.error('Error verifying session:', error);
+          console.error('Error verifying subscription:', error);
         }
       }
     };
 
-    verifyStripeSession();
+    verifyPayPalSubscription();
   }, [params]);
 
   useEffect(() => {
