@@ -185,18 +185,4 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 4,
   },
-  devButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1a1a1a',
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 16,
-    gap: 8,
-  },
-  devButtonText: {
-    fontSize: 12,
-    color: '#666',
-  },
 });
