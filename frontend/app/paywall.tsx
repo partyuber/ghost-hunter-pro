@@ -59,7 +59,7 @@ export default function PaywallScreen() {
 
         <View style={styles.disclaimerContainer}>
           <Text style={styles.disclaimer}>
-            • Secure payment powered by Stripe
+            • Secure payment powered by PayPal
           </Text>
           <Text style={styles.disclaimer}>
             • Subscription automatically renews unless cancelled
@@ -71,13 +71,6 @@ export default function PaywallScreen() {
             • No refunds for partial months
           </Text>
         </View>
-
-        <Link href="/dev-unlock" asChild>
-          <TouchableOpacity style={styles.devButton}>
-            <Ionicons name="bug-outline" size={16} color="#666" />
-            <Text style={styles.devButtonText}>Developer Mode</Text>
-          </TouchableOpacity>
-        </Link>
       </ScrollView>
     </View>
   );
