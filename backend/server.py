@@ -245,7 +245,7 @@ async def get_evp_analysis(recording_id: str):
         raise HTTPException(status_code=404, detail="Analysis not found")
     return {"success": True, "analysis": serialize_doc(analysis)}
 
-# Stripe Subscription Endpoints
+# PayPal Subscription Endpoints
 class CheckoutRequest(BaseModel):
     user_id: str
 
@@ -273,52 +273,241 @@ async def get_subscription_status(user_id: str):
             "success": True,
             "is_subscribed": is_active,
             "status": subscription.get("status", "inactive"),
-            "subscription_id": subscription.get("stripe_subscription_id")
+            "subscription_id": subscription.get("paypal_subscription_id")
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/subscription/verify-session")
-async def verify_session(session_id: str, user_id: str):
-    """Verify Stripe checkout session and activate subscription"""
+@app.post("/api/subscription/create-checkout")
+async def create_paypal_subscription(request: CheckoutRequest):
+    """Create PayPal subscription for user"""
     try:
-        if not STRIPE_SECRET_KEY:
-            return {"success": False, "message": "Stripe not configured"}
+        if not PAYPAL_CLIENT_ID or not PAYPAL_PLAN_ID:
+            return {
+                "success": False,
+                "message": "PayPal not configured. Please add PayPal credentials to .env file"
+            }
         
-        # Retrieve the session from Stripe
-        session = stripe.checkout.Session.retrieve(session_id)
+        # Get PayPal access token
+        access_token = get_paypal_access_token()
+        if not access_token:
+            return {"success": False, "message": "Failed to authenticate with PayPal"}
         
-        if session.payment_status == "paid":
-            # Activate subscription in database
+        # Create PayPal subscription
+        url = f"{PAYPAL_BASE_URL}/v1/billing/subscriptions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {access_token}",
+            "Prefer": "return=representation"
+        }
+        
+        subscription_data = {
+            "plan_id": PAYPAL_PLAN_ID,
+            "custom_id": request.user_id,
+            "application_context": {
+                "brand_name": "Ghost Hunter Pro",
+                "return_url": f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/?subscription=success&user_id={request.user_id}",
+                "cancel_url": f"{os.getenv('FRONTEND_URL', 'http://localhost:3000')}/paywall?canceled=true",
+                "user_action": "SUBSCRIBE_NOW"
+            }
+        }
+        
+        response = requests.post(url, headers=headers, json=subscription_data)
+        
+        if response.status_code == 201:
+            subscription = response.json()
+            subscription_id = subscription["id"]
+            
+            # Get approval link
+            approval_link = None
+            for link in subscription.get("links", []):
+                if link.get("rel") == "approve":
+                    approval_link = link.get("href")
+                    break
+            
+            if approval_link:
+                return {
+                    "success": True,
+                    "checkout_url": approval_link,
+                    "subscription_id": subscription_id
+                }
+            else:
+                return {"success": False, "message": "No approval link found"}
+        else:
+            return {
+                "success": False,
+                "message": f"PayPal error: {response.text}"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Subscription creation failed: {str(e)}")
+
+@app.post("/api/subscription/verify")
+async def verify_paypal_subscription(subscription_id: str, user_id: str):
+    """Verify PayPal subscription and activate"""
+    try:
+        if not PAYPAL_CLIENT_ID:
+            return {"success": False, "message": "PayPal not configured"}
+        
+        # Get PayPal access token
+        access_token = get_paypal_access_token()
+        if not access_token:
+            return {"success": False, "message": "Failed to authenticate with PayPal"}
+        
+        # Get subscription details from PayPal
+        url = f"{PAYPAL_BASE_URL}/v1/billing/subscriptions/{subscription_id}"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {access_token}"
+        }
+        
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code == 200:
+            subscription = response.json()
+            status = subscription.get("status")
+            
+            if status in ["ACTIVE", "APPROVED"]:
+                # Activate subscription in database
+                await db.subscriptions.update_one(
+                    {"user_id": user_id},
+                    {
+                        "$set": {
+                            "user_id": user_id,
+                            "paypal_subscription_id": subscription_id,
+                            "status": "active",
+                            "paypal_status": status,
+                            "created_at": datetime.utcnow().isoformat(),
+                            "updated_at": datetime.utcnow().isoformat()
+                        }
+                    },
+                    upsert=True
+                )
+                
+                return {
+                    "success": True,
+                    "is_subscribed": True,
+                    "message": "Subscription activated"
+                }
+            else:
+                return {
+                    "success": False,
+                    "is_subscribed": False,
+                    "message": f"Subscription status: {status}"
+                }
+        else:
+            return {"success": False, "message": f"Failed to verify subscription: {response.text}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Verification failed: {str(e)}")
+
+@app.post("/api/subscription/webhook")
+async def paypal_webhook(request: dict):
+    """Handle PayPal webhooks for subscription events"""
+    try:
+        event_type = request.get("event_type")
+        resource = request.get("resource", {})
+        
+        if event_type == "BILLING.SUBSCRIPTION.ACTIVATED":
+            # Subscription activated
+            subscription_id = resource.get("id")
+            custom_id = resource.get("custom_id")  # This is our user_id
+            
             await db.subscriptions.update_one(
-                {"user_id": user_id},
+                {"user_id": custom_id},
                 {
                     "$set": {
-                        "user_id": user_id,
-                        "stripe_subscription_id": session.subscription,
-                        "stripe_customer_id": session.customer,
-                        "stripe_session_id": session_id,
+                        "user_id": custom_id,
+                        "paypal_subscription_id": subscription_id,
                         "status": "active",
-                        "created_at": datetime.utcnow().isoformat(),
+                        "paypal_status": "ACTIVE",
                         "updated_at": datetime.utcnow().isoformat()
                     }
                 },
                 upsert=True
             )
             
-            return {
-                "success": True,
-                "is_subscribed": True,
-                "message": "Subscription activated"
-            }
-        else:
-            return {
-                "success": False,
-                "is_subscribed": False,
-                "message": "Payment not completed"
-            }
+        elif event_type == "BILLING.SUBSCRIPTION.CANCELLED":
+            # Subscription cancelled
+            subscription_id = resource.get("id")
+            
+            await db.subscriptions.update_one(
+                {"paypal_subscription_id": subscription_id},
+                {
+                    "$set": {
+                        "status": "cancelled",
+                        "paypal_status": "CANCELLED",
+                        "updated_at": datetime.utcnow().isoformat()
+                    }
+                }
+            )
+        
+        elif event_type == "BILLING.SUBSCRIPTION.SUSPENDED":
+            # Subscription suspended (payment failed)
+            subscription_id = resource.get("id")
+            
+            await db.subscriptions.update_one(
+                {"paypal_subscription_id": subscription_id},
+                {
+                    "$set": {
+                        "status": "suspended",
+                        "paypal_status": "SUSPENDED",
+                        "updated_at": datetime.utcnow().isoformat()
+                    }
+                }
+            )
+        
+        return {"success": True}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Verification failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/subscription/cancel")
+async def cancel_paypal_subscription(request: CancelRequest):
+    """Cancel user's PayPal subscription"""
+    try:
+        # Find user's subscription
+        subscription = await db.subscriptions.find_one({"user_id": request.user_id})
+        
+        if not subscription:
+            return {"success": False, "message": "No active subscription found"}
+        
+        if not PAYPAL_CLIENT_ID:
+            return {"success": False, "message": "PayPal not configured"}
+        
+        # Get PayPal access token
+        access_token = get_paypal_access_token()
+        if not access_token:
+            return {"success": False, "message": "Failed to authenticate with PayPal"}
+        
+        # Cancel in PayPal
+        paypal_subscription_id = subscription.get("paypal_subscription_id")
+        if paypal_subscription_id:
+            url = f"{PAYPAL_BASE_URL}/v1/billing/subscriptions/{paypal_subscription_id}/cancel"
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}"
+            }
+            data = {
+                "reason": "User requested cancellation"
+            }
+            
+            response = requests.post(url, headers=headers, json=data)
+            
+            if response.status_code not in [200, 204]:
+                return {"success": False, "message": f"PayPal cancellation failed: {response.text}"}
+        
+        # Update in database
+        await db.subscriptions.update_one(
+            {"user_id": request.user_id},
+            {
+                "$set": {
+                    "status": "cancelled",
+                    "updated_at": datetime.utcnow().isoformat()
+                }
+            }
+        )
+        
+        return {"success": True, "message": "Subscription cancelled"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/subscription/create-checkout")
 async def create_checkout_session(request: CheckoutRequest):
