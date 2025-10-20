@@ -49,24 +49,12 @@
         {
           "microphonePermission": "Allow Ghost Hunter Pro to record audio for EVP analysis"
         }
-      ],
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#0a0a0a"
-        }
       ]
     ],
     "experiments": {
       "typedRoutes": true
     },
-    "extra": {
-      "eas": {
-        "projectId": "YOUR_PROJECT_ID_HERE"
-      }
-    }
+    "extra": {},
+    "owner": "partyuber"
   }
 }
